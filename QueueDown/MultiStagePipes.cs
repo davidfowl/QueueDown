@@ -40,37 +40,59 @@ public static class MultiStagePipes
     private static async Task ReadAllPipes(PipeGroup stage1Pipes, PipeWriter outputPipe)
     {
         while (true) {
-            var pipes = stage1Pipes.Readers;
+            var pipes = stage1Pipes.Readers; //fresh read incase this changed
+            bool anyDataThisLoop = false;
 
             foreach (var inputPipe in pipes) 
             {
                 if (inputPipe.TryRead(out var result)) 
                 {
-                    var inputBuffer = result.Buffer;
+                    anyDataThisLoop = true;
 
-                    if (inputBuffer.IsSingleSegment) 
-                    {
-                        outputPipe.Write(result.Buffer.FirstSpan);
-                    } 
-                    else 
-                    {
-                        foreach (var segment in result.Buffer) {
-                            outputPipe.Write(segment.Span);
-                        }
-                    }
-                    
-                    var flushResult = await outputPipe.FlushAsync();
+                    await ProcessPipeResult(stage1Pipes, inputPipe, result, outputPipe);
+                }
+            }
 
-                    inputPipe.AdvanceTo(inputBuffer.End);
+            if(!anyDataThisLoop)
+            {
+                //take the slow path if we are starved
+                var results = await stage1Pipes.WaitForMoreData();
 
-                    if (result.IsCompleted || flushResult.IsCompleted) {
-                        stage1Pipes.RemovePipe(inputPipe);
-                        continue;
-                    }
+                foreach(var result in results)
+                {
+                    await ProcessPipeResult(stage1Pipes, result.Item1, result.Item2, outputPipe);
                 }
             }
         }
     }
+
+    private static async Task ProcessPipeResult(PipeGroup group, PipeReader inputPipe, ReadResult result, PipeWriter outputPipe)
+    {
+        var inputBuffer = result.Buffer;
+
+        if (inputBuffer.IsSingleSegment) 
+        {
+            outputPipe.Write(result.Buffer.FirstSpan);
+        } 
+        else 
+        {
+            foreach (var segment in result.Buffer) 
+            {
+                outputPipe.Write(segment.Span);
+            }
+        }
+
+        var flushResult = await outputPipe.FlushAsync();
+
+        inputPipe.AdvanceTo(inputBuffer.End);
+
+
+        if (result.IsCompleted || flushResult.IsCompleted) {
+            group.RemovePipe(inputPipe);
+        }
+    }
+
+    
 
     /// <summary>
     /// Provides a way to add and remove pipes in a fast/thread safe way
@@ -90,6 +112,35 @@ public static class MultiStagePipes
         public void RemovePipe(PipeReader reader)
         {
             ImmutableInterlocked.Update(ref _readers, static (array, arg) => array.Remove(arg), reader);
+        }
+
+        public async Task<IReadOnlyList<(PipeReader, ReadResult)>> WaitForMoreData()
+        {
+            var source = new CancellationTokenSource();
+
+            var readers = _readers;
+            var waits = 
+                readers.Select(reader => reader.ReadAsync(source.Token).AsTask()).ToArray();
+
+            //ignore result because we can look check the Tasks for a result
+            //multiple times
+            await Task.WhenAny(waits);
+
+            //cancel any pending reads...i think?
+            //pipes are a little weird...
+            source.Cancel();
+
+            //collect any results that did finish
+            List<(PipeReader, ReadResult)> results = new();
+            for (int i = 0; i < readers.Length; i++) 
+            {
+                var task = waits[i];
+                //probably need more error handling or something here
+                if (task.IsCompleted)
+                    results.Add((readers[i], task.Result));
+            }
+
+            return results;
         }
     }
 }

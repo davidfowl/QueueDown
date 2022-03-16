@@ -17,7 +17,7 @@ partial class Program
         
         MultiStagePipes.Run(pipe, pool);
 
-        Pipes4(pipe, tasks, pool);
+        //Pipes4(pipe, tasks, pool);
         // Pipes3(pipe, tasks, pool);
         // Pipes2(pipe, tasks, pool);
         // Pipes(pipe, tasks, pool);
