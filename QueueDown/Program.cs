@@ -8,10 +8,14 @@ partial class Program
 {
     static async Task Main(string[] args)
     {
+        Console.WriteLine("Running...");
+        
         // This is the memory pool from Kestrel
         var pool = new PinnedBlockMemoryPool();
         var pipe = new Pipe(new(pool));
         var tasks = new List<Task>();
+        
+        MultiStagePipes.Run(pipe, tasks, pool);
 
         Pipes4(pipe, tasks, pool);
         // Pipes3(pipe, tasks, pool);
@@ -54,10 +58,10 @@ public class ServiceEventSource : EventSource
     {
         if (command.Command == EventCommand.Enable)
         {
-            _invocationRateCounter = new IncrementingPollingCounter("transfer-rate", this, () => Volatile.Read(ref _bytesConsumed))
+            _invocationRateCounter = new IncrementingPollingCounter("transfer-rate", this, () => Volatile.Read(ref _bytesConsumed) / (1024 * 1024))
             {
                 DisplayRateTimeScale = TimeSpan.FromSeconds(1),
-                DisplayUnits = "B"
+                DisplayUnits = "MB"
             };
         }
     }
