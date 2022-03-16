@@ -6,25 +6,12 @@ namespace QueueDown;
 
 public static class MultiStagePipes
 {
-    public class PipeGroup
-    {
-        private ImmutableArray<PipeReader> _readers = ImmutableArray<PipeReader>.Empty;
-
-        public ImmutableArray<PipeReader> Readers => _readers;
-
-
-        public void AddPipe(PipeReader reader)
-        {
-            ImmutableInterlocked.Update(ref _readers, static (array, arg) => array.Add(arg), reader);
-        }
-
-        public void RemovePipe(PipeReader reader)
-        {
-            ImmutableInterlocked.Update(ref _readers, static (array, arg) => array.Remove(arg), reader);
-        }
-    }
-
-    public static void Run(Pipe outputPipe, List<Task> tasks, MemoryPool<byte> pool)
+    /// <summary>
+    /// Basically tries to reduce write contention but giving each thread/worker
+    /// it's own pipe to write to. Then a single reader pushes input into the
+    /// output pipe.
+    /// </summary>
+    public static void Run(Pipe outputPipe, MemoryPool<byte> pool)
     {
         PipeGroup readers = new();
 
@@ -47,7 +34,10 @@ public static class MultiStagePipes
         var _ = Task.Run(() => ReadAllPipes(readers, outputPipe.Writer));
     }
 
-    static async Task ReadAllPipes(PipeGroup stage1Pipes, PipeWriter outputPipe)
+    /// <summary>
+    /// Reads from pipes in a round-robin manner and pushes output into final pipe
+    /// </summary>
+    private static async Task ReadAllPipes(PipeGroup stage1Pipes, PipeWriter outputPipe)
     {
         while (true) {
             var pipes = stage1Pipes.Readers;
@@ -79,6 +69,27 @@ public static class MultiStagePipes
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Provides a way to add and remove pipes in a fast/thread safe way
+    /// </summary>
+    public class PipeGroup
+    {
+        private ImmutableArray<PipeReader> _readers = ImmutableArray<PipeReader>.Empty;
+
+        public ImmutableArray<PipeReader> Readers => _readers;
+
+
+        public void AddPipe(PipeReader reader)
+        {
+            ImmutableInterlocked.Update(ref _readers, static (array, arg) => array.Add(arg), reader);
+        }
+
+        public void RemovePipe(PipeReader reader)
+        {
+            ImmutableInterlocked.Update(ref _readers, static (array, arg) => array.Remove(arg), reader);
         }
     }
 }

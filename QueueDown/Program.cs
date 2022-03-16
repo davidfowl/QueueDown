@@ -15,7 +15,7 @@ partial class Program
         var pipe = new Pipe(new(pool));
         var tasks = new List<Task>();
         
-        MultiStagePipes.Run(pipe, tasks, pool);
+        MultiStagePipes.Run(pipe, pool);
 
         Pipes4(pipe, tasks, pool);
         // Pipes3(pipe, tasks, pool);
