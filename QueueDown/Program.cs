@@ -1,5 +1,5 @@
 ﻿using System.Buffers;
-using System.Diagnostics.Tracing;
+using System.Diagnostics.Metrics;
 using System.IO.Pipelines;
 
 namespace QueueDown;
@@ -8,6 +8,9 @@ partial class Program
 {
     static async Task Main(string[] args)
     {
+        using var meter = new Meter("QueueDown");
+        var counter = meter.CreateCounter<long>("transfer-rate", "B");
+
         // This is the memory pool from Kestrel
         var pool = new PinnedBlockMemoryPool();
         var pipe = new Pipe(new(pool));
@@ -27,7 +30,7 @@ partial class Program
             {
                 var result = await reader.ReadAsync();
                 var buffer = result.Buffer;
-                ServiceEventSource.Log.ConsumeBytes(buffer.Length);
+                counter.Add(buffer.Length);
                 reader.AdvanceTo(buffer.End);
             }
         });
@@ -35,35 +38,5 @@ partial class Program
         tasks.Add(consumer);
 
         await Task.WhenAll(tasks);
-    }
-}
-
-public class ServiceEventSource : EventSource
-{
-    public static ServiceEventSource Log = new ServiceEventSource();
-    private IncrementingPollingCounter? _invocationRateCounter;
-
-    public long _bytesConsumed;
-
-    public ServiceEventSource() : base("QueueDown")
-    {
-
-    }
-
-    protected override void OnEventCommand(EventCommandEventArgs command)
-    {
-        if (command.Command == EventCommand.Enable)
-        {
-            _invocationRateCounter = new IncrementingPollingCounter("transfer-rate", this, () => Volatile.Read(ref _bytesConsumed))
-            {
-                DisplayRateTimeScale = TimeSpan.FromSeconds(1),
-                DisplayUnits = "B"
-            };
-        }
-    }
-
-    internal void ConsumeBytes(long bytesConsumed)
-    {
-        Interlocked.Add(ref _bytesConsumed, bytesConsumed);
     }
 }
