@@ -1,10 +1,11 @@
 ﻿using System.Buffers;
+using System.Diagnostics.Metrics;
 using System.IO.Pipelines;
 using System.Threading.Channels;
 
 partial class Program
 {
-    public static void Pipes3(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
+    public static void Pipes3(Pipe pipe, Counter<long> counter, List<Task> tasks, MemoryPool<byte> pool)
     {
         var channel = Channel.CreateBounded<Output>(new BoundedChannelOptions(50)
         {
@@ -14,20 +15,21 @@ partial class Program
         // Multiple producers
         for (int i = 0; i < 50; i++)
         {
+            var producerPipe = new Pipe(new(pool));
+            var output = new Output { Reader = producerPipe.Reader, Id = i.ToString() };
+            var b = (byte)i;
+
             var producer1 = Task.Run(async () =>
             {
-                var producerPipe = new Pipe(new(pool));
-                var output = new Output { Reader = producerPipe.Reader };
-
                 // Write to the pipe
                 while (true)
                 {
                     var buffer = producerPipe.Writer.GetMemory();
-                    buffer.Span.Fill((byte)i);
+                    buffer.Span.Fill(b);
                     producerPipe.Writer.Advance(buffer.Length);
                     var flushTask = producerPipe.Writer.FlushAsync();
 
-                    if (output.Enqueue())
+                    if (output.Enqueue(buffer.Length))
                     {
                         // This should never fail
                         channel.Writer.TryWrite(output);
@@ -38,6 +40,8 @@ partial class Program
                     await flushTask;
                 }
             });
+
+            tasks.Add(producer1);
         }
 
         var producer = Task.Run(async () =>
@@ -56,8 +60,15 @@ partial class Program
                     writer.Write(m.Span);
                 }
                 await writer.FlushAsync();
-                output.Dequeue();
+
+                if (output.Dequeue(buffer.Length))
+                {
+                    // Add this stream to the back of the queue if data needs to be written
+                    channel.Writer.TryWrite(output);
+                }
+
                 reader.AdvanceTo(buffer.End);
+                counter.Add(buffer.Length / 1024, KeyValuePair.Create("Stream", (object?)output.Id));
             }
         });
 
@@ -66,12 +77,20 @@ partial class Program
 
     class Output
     {
-        private int _state;
+        private long _unconsumedBytes;
+
+        public string Id { get; init; } = default!;
 
         public PipeReader Reader { get; init; } = default!;
 
-        public bool Enqueue() => Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+        public bool Enqueue(long bytes)
+        {
+            return Interlocked.Add(ref _unconsumedBytes, bytes) == bytes;
+        }
 
-        public bool Dequeue() => Interlocked.Exchange(ref _state, 0) == 1;
+        public bool Dequeue(long bytes)
+        {
+            return Interlocked.Add(ref _unconsumedBytes, -bytes) > 0;
+        }
     }
 }
