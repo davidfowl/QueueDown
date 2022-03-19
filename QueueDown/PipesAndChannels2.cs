@@ -1,13 +1,10 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 using System.Threading.Channels;
-using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Infrastructure.PipeWriterHelpers;
-
-namespace QueueDown;
 
 partial class Program
 {
-    static void Pipes3(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
+    public static void Pipes3(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
     {
         var channel = Channel.CreateBounded<Output>(new BoundedChannelOptions(50)
         {

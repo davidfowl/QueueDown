@@ -1,11 +1,9 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 
-namespace QueueDown;
-
 partial class Program
 {
-    private static void Pipes4(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
+    public static void Pipes4(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
     {
         var semaphore = new SemaphoreSlim(1);
         var writer = pipe.Writer;

@@ -1,10 +1,8 @@
 ﻿using System.IO.Pipelines;
 
-namespace QueueDown;
-
 partial class Program
 {
-    private static void Semaphores(Pipe pipe, List<Task> tasks)
+    public static void Semaphores(Pipe pipe, List<Task> tasks)
     {
         var s = new SemaphoreSlim(1);
 

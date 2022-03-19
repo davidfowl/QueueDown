@@ -1,17 +1,10 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
+﻿using System.Buffers;
 using System.IO.Pipelines;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Infrastructure.PipeWriterHelpers;
-
-namespace QueueDown;
 
 partial class Program
 {
-    private static void Pipes(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
+    public static void Pipes(Pipe pipe, List<Task> tasks, MemoryPool<byte> pool)
     {
         var @lock = new object();
         var writer = new ConcurrentPipeWriter(pipe.Writer, pool, @lock);

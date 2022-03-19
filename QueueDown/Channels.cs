@@ -1,11 +1,9 @@
 ﻿using System.IO.Pipelines;
 using System.Threading.Channels;
 
-namespace QueueDown;
-
 partial class Program
 {
-    private static void Channels(Pipe pipe, List<Task> tasks)
+    public static void Channels(Pipe pipe, List<Task> tasks)
     {
         var channel = Channel.CreateBounded<(byte[], ManualResetValueTaskSource<object?>)>(new BoundedChannelOptions(50)
         {
