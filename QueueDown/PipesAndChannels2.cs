@@ -45,13 +45,13 @@ partial class Program
 
         var producer = Task.Run(async () =>
         {
-            var @lock = new object();
-            var writer = new ConcurrentPipeWriter(pipe.Writer, pool, @lock);
+            var writer = pipe.Writer;
 
             await foreach (var output in channel.Reader.ReadAllAsync())
             {
                 var reader = output.Reader;
-                var result = await reader.ReadAsync();
+                // There should always be a result
+                reader.TryRead(out var result);
                 var buffer = result.Buffer;
 
                 foreach (var m in buffer)
