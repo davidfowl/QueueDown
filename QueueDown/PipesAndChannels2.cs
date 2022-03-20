@@ -1,12 +1,16 @@
 ﻿using System.Buffers;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.IO.Pipelines;
 using System.Threading.Channels;
 
 partial class Program
 {
-    public static void Pipes3(Pipe pipe, Counter<long> counter, List<Task> tasks, MemoryPool<byte> pool)
+    public static PipeReader Pipes3(Counter<long> counter, List<Task> tasks)
     {
+        // This is the memory pool from Kestrel
+        var pool = new PinnedBlockMemoryPool();
+        var pipe = new Pipe(new(pool));
         var channel = Channel.CreateBounded<Output>(new BoundedChannelOptions(50)
         {
             SingleReader = true
@@ -28,7 +32,10 @@ partial class Program
                     buffer.Span.Fill(b);
                     producerPipe.Writer.Advance(buffer.Length);
                     var flushTask = producerPipe.Writer.FlushAsync();
-
+                    // I think there is a bug here?
+                    // As soon as FlushAsync runs the reader could read the data
+                    // and underflow the unconsumedBytes. Pipes5 moved the Enqueue before
+                    // FlushAsync() to avoid that
                     if (output.Enqueue(buffer.Length))
                     {
                         // This should never fail
@@ -73,6 +80,7 @@ partial class Program
         });
 
         tasks.Add(producer);
+        return pipe.Reader;
     }
 
     class Output
