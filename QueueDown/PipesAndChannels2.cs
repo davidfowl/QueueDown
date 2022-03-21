@@ -27,9 +27,12 @@ partial class Program
                     var buffer = producerPipe.Writer.GetMemory();
                     buffer.Span.Fill(b);
                     producerPipe.Writer.Advance(buffer.Length);
+                    // Enqueue before flushing to make sure that it's impossible to 
+                    // underflow the consumed bytes (it's visible to the reader as soon as we flush).
+                    var enqueue = output.Enqueue(buffer.Length);
                     var flushTask = producerPipe.Writer.FlushAsync();
 
-                    if (output.Enqueue(buffer.Length))
+                    if (enqueue)
                     {
                         // This should never fail
                         channel.Writer.TryWrite(output);
